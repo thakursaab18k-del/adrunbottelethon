@@ -31,20 +31,20 @@ async def bot_logic():
             try:
                 # 1. Join attempt
                 await client(JoinChannelRequest(link))
-                print(f"Successfully joined/verified: {link}")
+                print(f"Successfully joined: {link}")
                 
                 # 2. Send Message
                 await client.send_message(link, msg)
                 print(f"Message sent to {link}")
                 
             except Exception as e:
-                print(f"Could not process {link}: {e}")
+                print(f"Skipping {link} due to error: {e}")
+                continue # Yeh line bahut zaroori hai, ye bot ko agle group par bhej degi
             
-            # Wait a few seconds between groups to avoid spam flags
-            await asyncio.sleep(10)
+            await asyncio.sleep(15) # Har group ke beech 15 seconds ka gap
             
-        print("Cycle complete. Sleeping for 1 hour before next run.")
-        await asyncio.sleep(3600)
+        print("Cycle complete. Waiting for next run.")
+        await asyncio.sleep(1800) # 30 minute wait
 
 if __name__ == '__main__':
     Thread(target=run_flask).start()
