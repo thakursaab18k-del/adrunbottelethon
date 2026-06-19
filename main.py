@@ -1,59 +1,66 @@
 import os
 import asyncio
-import random
-from telethon import TelegramClient
+from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 from telethon.tl.functions.messages import ImportChatInviteRequest
 from flask import Flask
 from threading import Thread
 
-# Flask server setup
 app = Flask(__name__)
 @app.route('/')
 def home(): return "Bot is Active!"
 def run_flask(): app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
 
-# Config
 API_ID = 30089442
 API_HASH = '842dc7bbd3ce4a4f96194814dcb725a8'
 SESSION_STRING = os.getenv('SESSION_STRING')
 
+client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+
+# Yeh function message ke baad aane wale 'Join Channel' alerts ko handle karega
+@client.on(events.NewMessage)
+async def handle_security_alerts(event):
+    # Agar group bot koi link bhej raha hai
+    if event.message.text and ("t.me/" in event.message.text or "@" in event.message.text):
+        # Check agar message mein join karne ka kaha gaya hai
+        if "join" in event.message.text.lower() or "channel" in event.message.text.lower():
+            try:
+                # Link extract karo
+                words = event.message.text.split()
+                link = next((w for w in words if "t.me/" in w), None)
+                if link:
+                    print(f"Security Alert detected! Joining: {link}")
+                    await client(ImportChatInviteRequest(link.split('/')[-1].replace('+', '')))
+                    await asyncio.sleep(5)
+            except Exception as e:
+                print(f"Could not auto-join channel: {e}")
+
 async def bot_logic():
-    client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     await client.start()
     msg = os.getenv('CUSTOM_MESSAGE', "Default message")
     
     while True:
         for i in range(1, 51): 
             link = os.getenv(f'LINK{i}')
-            if link:
-                try:
-                    # 1. Join Attempt
-                    invite_hash = link.split('/')[-1].replace('+', '')
-                    print(f"Joining {link}...")
-                    await client(ImportChatInviteRequest(invite_hash))
-                    
-                    # 2. SECURITY PAUSE: Channel join/Captcha ke liye 15 sec wait
-                    print("Security wait for Channel/Captcha validation...")
-                    await asyncio.sleep(15) 
-                    
-                    # 3. Message Delivery
-                    # Random delay to look like a human
-                    await asyncio.sleep(random.randint(5, 10))
-                    await client.send_message(link, msg)
-                    print(f"Message delivered to {link}")
-                    
-                except Exception as e:
-                    # Agar pehle se member hain, toh seedha message try karein
-                    if "already in the chat" in str(e).lower():
-                        await client.send_message(link, msg)
-                    else:
-                        print(f"Skipping/Issue with {link}: {e}")
+            if not link: continue
+            
+            try:
+                invite_hash = link.split('/')[-1].replace('+', '')
+                await client(ImportChatInviteRequest(invite_hash))
                 
-                await asyncio.sleep(10) # Next group se pehle pause
-        
-        await asyncio.sleep(300) # Full cycle ke baad 5 min ka break
+                # Bot message bhejega
+                print(f"Attempting to message {link}")
+                await client.send_message(link, msg)
+                
+                # Ab 10 sec wait karein, agar message delete hua toh handler trigger hoga
+                await asyncio.sleep(10)
+                
+            except Exception as e:
+                print(f"Error: {e}")
+            
+            await asyncio.sleep(5)
+        await asyncio.sleep(300)
 
 if __name__ == '__main__':
     Thread(target=run_flask).start()
-    asyncio.run(bot_logic())
+    client.loop.run_until_complete(bot_logic())
